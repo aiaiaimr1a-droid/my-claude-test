@@ -30,3 +30,29 @@ def test_hidden_link_in_entity():
 def test_study_title():
     assert Found("invite", "x", title="ФІТ 2 курс, група ПІ-22").is_study
     assert not Found("invite", "x", title="Барахолка Київ").is_study
+
+
+def test_check_queue_order_and_cache(tmp_path, monkeypatch):
+    import time
+
+    import bot.discover as d
+
+    monkeypatch.setattr(d, "CACHE_FILE", tmp_path / "cache.json")
+    now = time.time()
+    old_any = Found("invite", "old", posted_at=now - 400 * 86400)
+    new_any = Found("invite", "new", posted_at=now - 86400)
+    study_old = Found("invite", "study", posted_at=now - 300 * 86400, context_study=True)
+    expired = Found("invite", "dead", status="expired")
+    fresh_ok = Found("invite", "ok", status="ok", checked_at=now)
+    stale_ok = Found("invite", "stale", status="ok", checked_at=now - 30 * 86400)
+
+    items = [old_any, new_any, study_old, expired, fresh_ok, stale_ok]
+    queue = sorted((i for i in items if i.needs_check()), key=Found.priority)
+    assert [i.key for i in queue][:3] == ["study", "new", "old"]
+    assert "dead" not in [i.key for i in queue] and "ok" not in [i.key for i in queue]
+    assert "stale" in [i.key for i in queue]
+
+    d._save_cache({f"invite:{i.key}": i for i in items})
+    loaded = d._load_cache()
+    assert loaded["invite:dead"].status == "expired"
+    assert loaded["invite:study"].context_study

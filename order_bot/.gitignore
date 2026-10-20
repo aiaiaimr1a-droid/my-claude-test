@@ -7,3 +7,4 @@ __pycache__/
 .pytest_cache/
 discovered.csv
 login_qr.svg
+discover_cache.json

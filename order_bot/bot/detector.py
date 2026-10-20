@@ -27,7 +27,12 @@ WORK_TYPES: dict[str, tuple[str, ...]] = {
         "курсов", "курсач", "курсак", "hausarbeit", "seminární", "semestráln",
     ),
     "Essay / report": ("реферат", "referat", "доклад", "доповід"),
-    "Test paper": ("контрольн", "модульн", "самостоятельн", "самостійн"),
+    "Test paper": (
+        "контрольн", "модульн", "самостоятелк", "самостійк",
+        "самостоятельная работ", "самостоятельную работ", "самостоятельные работ",
+        "самостоятельной работ", "самостійна робот", "самостійну робот",
+        "самостійні робот", "самостійної робот",
+    ),
     "Essay": ("эссе", "есе", "esej", "essay"),
     "Internship report": ("по практик", "з практик", "звіт", "отчет по", "отчёт по"),
     "Lab work": ("лаборатор", "лабу", "лабы", "лаби", "лаба", "лабк"),
@@ -84,6 +89,18 @@ AD_MARKERS = (
 )
 
 
+# Темы, которые точно не про учёбу: жильё, работа, реклама, продажи.
+# Если нашлось хоть одно — сообщение отбрасываем.
+OFF_TOPIC = (
+    "квартир", "кімнат", "комнат", "оренд", "аренд", "заселен", "заселя", "засели",
+    "подселен", "підселен", "депозит", "сдаю", "здаю", "сниму", "зніму", "хостел",
+    "ваканси", "вакансі", "зарплат", "зарплатн", "підробіт", "подработ", "робота на складі",
+    "работа на складе", "реклам", "продвига", "просуваємо", "продвижен", "просуван",
+    "продам", "продаю", "куплю", "доставк", "перевезен", "трансфер", "кредит",
+    "посилк", "посылк", "мийк", "уборк", "прибиран",
+)
+
+
 def _starts_word(words: tuple[str, ...]) -> re.Pattern:
     alternatives = "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
     return re.compile(rf"(?<!\w)(?:{alternatives})", re.IGNORECASE)
@@ -93,6 +110,7 @@ TYPE_PATTERNS = {name: _starts_word(roots) for name, roots in WORK_TYPES.items()
 WEAK_CONFIRM_RE = _starts_word(WEAK_CONFIRM)
 REQUEST_RE = _starts_word(REQUEST_MARKERS)
 AD_RE = _starts_word(AD_MARKERS)
+OFF_TOPIC_RE = _starts_word(OFF_TOPIC)
 
 MIN_LEN = 15
 MAX_LEN = 1200  # длинные полотна почти всегда реклама
@@ -124,6 +142,8 @@ def detect(text: str) -> Detection:
         return Detection(False, "length")
     if AD_RE.search(text):
         return Detection(False, "ad")
+    if OFF_TOPIC_RE.search(text):
+        return Detection(False, "off topic")
     if len(URL_RE.findall(text)) + len(MENTION_RE.findall(text)) > 2:
         return Detection(False, "too many links")
 

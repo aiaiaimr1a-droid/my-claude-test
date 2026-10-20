@@ -14,9 +14,10 @@
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events, utils
 from telethon.errors import FloodWaitError
 from telethon.tl.custom import Message
 from telethon.tl.types import User
@@ -63,29 +64,74 @@ async def _publish(publisher: Publisher, message: Message, chat) -> None:
     )
 
 
+async def _cached_peer(client: TelegramClient, ref: str):
+    """Чат из памяти сессии — без запроса к Telegram. None, если его там нет."""
+    try:
+        return await utils.maybe_async(client.session.get_input_entity(ref))
+    except ValueError:
+        return None
+
+
 async def _poll_public_chats(client: TelegramClient, cfg: Config, publisher: Publisher) -> None:
-    entities = {}  # username -> entity; резолв username у Telegram строго лимитирован
+    """Читает публичные группы без вступления.
+
+    Поиск чата по @имени у Telegram ограничен суточным лимитом, поэтому:
+      * get_input_entity берёт чат из памяти сессии (find_groups уже всё туда
+        записал) и идёт в сеть, только если чата там нет;
+      * при FloodWait бот не засыпает целиком, а откладывает только то,
+        что упёрлось в лимит, и продолжает читать остальные группы.
+    """
+    peers = {}  # @имя -> InputPeer
     last_ids: dict[str, int] = {}
+    skip_until: dict[str, float] = {}  # группы, которые временно не читаем
+    resolve_paused_until = 0.0  # пока не истечёт — новых имён не ищем
     while True:
         for ref in cfg.userbot_public_chats:
-            try:
-                if ref not in entities:
-                    entities[ref] = await client.get_entity(ref)
-                chat = entities[ref]
-                min_id = last_ids.get(ref, 0)
-                messages = await client.get_messages(chat, limit=50, min_id=min_id)
-                since = datetime.now(timezone.utc) - FIRST_POLL_WINDOW
-                for message in reversed(messages):
-                    if min_id == 0 and message.date < since:
+            now = time.time()
+            if skip_until.get(ref, 0) > now:
+                continue
+
+            if ref not in peers:
+                cached = await _cached_peer(client, ref)
+                if cached is not None:
+                    peers[ref] = cached
+                elif resolve_paused_until > now:
+                    continue
+                else:
+                    try:
+                        peers[ref] = await client.get_input_entity(ref)
+                    except FloodWaitError as e:
+                        resolve_paused_until = now + e.seconds
+                        log.warning(
+                            "username lookup limit reached, new chats paused for %.1f h; "
+                            "already known chats keep working",
+                            e.seconds / 3600,
+                        )
                         continue
-                    await _publish(publisher, message, chat)
-                if messages:
-                    last_ids[ref] = max(m.id for m in messages)
+                    except Exception as e:  # приватная, удалённая, опечатка в имени
+                        log.warning("cannot find %s: %s", ref, e)
+                        skip_until[ref] = now + 24 * 3600
+                        continue
+
+            min_id = last_ids.get(ref, 0)
+            try:
+                messages = await client.get_messages(peers[ref], limit=50, min_id=min_id)
             except FloodWaitError as e:
-                log.warning("flood wait %ss on %s", e.seconds, ref)
-                await asyncio.sleep(e.seconds + 1)
-            except Exception as e:  # приватная, удалённая, опечатка в имени
+                log.warning("flood wait %ss on %s, skipping it for now", e.seconds, ref)
+                skip_until[ref] = now + e.seconds
+                continue
+            except Exception as e:
                 log.warning("cannot read %s: %s", ref, e)
+                skip_until[ref] = now + 3600
+                continue
+
+            since = datetime.now(timezone.utc) - FIRST_POLL_WINDOW
+            for message in reversed(messages):
+                if min_id == 0 and message.date < since:
+                    continue
+                await _publish(publisher, message, message.chat or await message.get_chat())
+            if messages:
+                last_ids[ref] = max(m.id for m in messages)
             await asyncio.sleep(2)
         await asyncio.sleep(cfg.userbot_poll_seconds)
 

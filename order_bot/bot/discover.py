@@ -52,7 +52,8 @@ CACHE_FILE = Path("discover_cache.json")
 
 MAX_SEEDS = 60  # сколько каналов-источников просматривать
 POSTS_PER_SEED = 400  # сколько последних постов в каждом
-MAX_CHECKS = 150  # сколько ссылок проверять за один запуск (лимит Telegram)
+MAX_CHECKS = 150  # сколько приглашений проверять за один запуск (лимит Telegram)
+MAX_PUBLIC_CHECKS = 30  # сколько @имён — у поиска по имени суточный лимит строже
 RECHECK_DAYS = 7  # рабочие ссылки перепроверяем раз в неделю
 MAX_FLOOD_SLEEP = 60  # дольше этого не ждём — останавливаемся и сохраняем, что есть
 
@@ -202,7 +203,8 @@ async def _check_invite(client, item: Found) -> bool:
 
 async def _check_public(client, item: Found) -> bool:
     try:
-        entity = await client.get_entity(item.key)
+        # get_input_entity сначала смотрит в память сессии и не тратит лимит
+        entity = await client.get_entity(await client.get_input_entity(item.key))
     except FloodWaitError as e:
         print(f"Telegram asks to wait {e.seconds}s — stopping.", file=sys.stderr)
         return False
@@ -263,17 +265,28 @@ async def main(queries: list[str]) -> None:
                 print(f"  cannot read @{seed.username}: {e}", file=sys.stderr)
             await asyncio.sleep(1)
 
-        # 3. Проверка — по приоритету, не больше MAX_CHECKS за запуск
+        # 3. Проверка — по приоритету. У приглашений и @имён разные лимиты:
+        # если один кончился, второй продолжаем проверять.
         queue = sorted((it for it in items.values() if it.needs_check()), key=Found.priority)
-        print(f"To check: {len(queue)}, this run: {min(len(queue), MAX_CHECKS)}", file=sys.stderr)
-        for i, item in enumerate(queue[:MAX_CHECKS], 1):
-            print(f"[check {i}/{min(len(queue), MAX_CHECKS)}] {item.link}", file=sys.stderr)
-            checker = _check_invite if item.kind == "invite" else _check_public
-            if not await checker(client, item):
-                break
-            if i % 20 == 0:
+        limits = {"invite": MAX_CHECKS, "public": MAX_PUBLIC_CHECKS}
+        checkers = {"invite": _check_invite, "public": _check_public}
+        done = {"invite": 0, "public": 0}
+        stopped: set[str] = set()
+        print(f"To check: {len(queue)}", file=sys.stderr)
+        for item in queue:
+            kind = item.kind
+            if kind in stopped or done[kind] >= limits[kind]:
+                if len(stopped | {k for k in done if done[k] >= limits[k]}) == 2:
+                    break
+                continue
+            done[kind] += 1
+            print(f"[check {kind} {done[kind]}/{limits[kind]}] {item.link}", file=sys.stderr)
+            if not await checkers[kind](client, item):
+                stopped.add(kind)
+                continue
+            if sum(done.values()) % 20 == 0:
                 _save_cache(items)  # чтобы не потерять прогресс при обрыве
-            await asyncio.sleep(2 if item.kind == "invite" else 3)
+            await asyncio.sleep(2 if kind == "invite" else 3)
 
     _save_cache(items)
     _save_csv(items.values())

@@ -59,11 +59,11 @@ async def open_contact(
 ) -> None:
     arg = command.args or ""
     if not arg.startswith("o_") or not arg[2:].isdigit():
-        await message.answer("Ссылка некорректна.")
+        await message.answer("Invalid link.")
         return
     order = db.get_order(int(arg[2:]))
     if not order:
-        await message.answer("Заказ не найден.")
+        await message.answer("Order not found.")
         return
 
     user_id = message.from_user.id
@@ -71,9 +71,9 @@ async def open_contact(
     if not is_admin:
         member = await message.bot.get_chat_member(cfg.paid_channel_id, user_id)
         if member.status not in PAID_STATUSES:
-            text = "Контакты доступны только участникам платного канала."
+            text = "Contacts are available to paid channel members only."
             if cfg.subscribe_url:
-                text += f"\nОформить подписку: {cfg.subscribe_url}"
+                text += f"\nSubscribe here: {cfg.subscribe_url}"
             await message.answer(text)
             return
 
@@ -83,21 +83,23 @@ async def open_contact(
     if not already and not is_admin:
         if opened >= cfg.contact_limit:
             await message.answer(
-                f"Заказ #{order.id} уже набран: контакт открыли {cfg.contact_limit} автора."
+                f"Order #{order.id} is already taken: {cfg.contact_limit} authors have opened the contact."
             )
             return
         db.add_contact(order.id, user_id)
         opened += 1
         await publisher.refresh_buttons(order.id)
 
-    await message.answer(formatter.contact_message(order, max(cfg.contact_limit - opened, 0)))
+    await message.answer(
+        formatter.contact_message(order, max(cfg.contact_limit - opened, 0), is_admin)
+    )
 
 
 @router.message(CommandStart(), F.chat.type == ChatType.PRIVATE)
 async def start(message: Message) -> None:
     await message.answer(
-        "Привет! Я собираю заказы на студенческие работы в один канал.\n"
-        "Нажмите «Открыть контакт» под заказом в канале — и я пришлю контакт заказчика."
+        "Hi! I collect student work orders into one channel.\n"
+        "Tap «Get contact» under an order in the channel and I'll send you the client's contact."
     )
 
 
@@ -108,11 +110,11 @@ async def stats(message: Message, db: Database, cfg: Config) -> None:
     s = db.stats(days=7)
     sources = "\n".join(f"  • {title}: {n}" for title, n in s["by_source"]) or "  —"
     await message.answer(
-        "📊 <b>За 7 дней</b>\n"
-        f"Заказов: {s['orders']}\n"
-        f"Открыто контактов: {s['opened']}\n"
-        f"Активных авторов: {s['authors']}\n\n"
-        f"Источники:\n{sources}"
+        "📊 <b>Last 7 days</b>\n"
+        f"Orders: {s['orders']}\n"
+        f"Contacts opened: {s['opened']}\n"
+        f"Active authors: {s['authors']}\n\n"
+        f"Top sources:\n{sources}"
     )
 
 
@@ -120,4 +122,4 @@ async def stats(message: Message, db: Database, cfg: Config) -> None:
 async def chat_id(message: Message) -> None:
     """Помогает узнать ID чата при настройке. В каналах команды не работают —
     для канала перешлите любой его пост боту @userinfobot."""
-    await message.answer(f"ID этого чата: <code>{message.chat.id}</code>")
+    await message.answer(f"Chat ID: <code>{message.chat.id}</code>")

@@ -13,17 +13,17 @@ from dataclasses import dataclass
 
 # Тип работы -> корни слов
 WORK_TYPES: dict[str, tuple[str, ...]] = {
-    "Дипломная": ("диплом", "бакалаврськ", "бакалаврск", "магістерськ", "магистерск"),
-    "Курсовая": ("курсов",),
-    "Реферат": ("реферат",),
-    "Контрольная": ("контрольн", "модульн"),
-    "Эссе": ("эссе", "есе"),
-    "Отчёт по практике": ("по практик", "з практик", "звіт", "отчет по", "отчёт по"),
-    "Лабораторная": ("лаборатор", "лабу", "лабы", "лаби"),
-    "Презентация": ("презентац",),
-    "Задачи": ("задач", "розв'яз", "решить", "вирішити"),
-    "Тест / экзамен": ("тест", "экзамен", "екзамен", "залік", "зачет", "зачёт"),
-    "Статья / тезисы": ("стать", "тези", "тезис"),
+    "Thesis": ("диплом", "бакалаврськ", "бакалаврск", "магістерськ", "магистерск"),
+    "Coursework": ("курсов",),
+    "Essay / report": ("реферат",),
+    "Test paper": ("контрольн", "модульн"),
+    "Essay": ("эссе", "есе"),
+    "Internship report": ("по практик", "з практик", "звіт", "отчет по", "отчёт по"),
+    "Lab work": ("лаборатор", "лабу", "лабы", "лаби"),
+    "Presentation": ("презентац",),
+    "Problems": ("задач", "розв'яз", "решить", "вирішити"),
+    "Test / exam": ("тест", "экзамен", "екзамен", "залік", "зачет", "зачёт"),
+    "Article / abstract": ("стать", "тези", "тезис"),
 }
 
 # Признаки того, что человек ищет исполнителя
@@ -48,6 +48,11 @@ MAX_LEN = 1200  # длинные полотна почти всегда рекл
 
 BUDGET_RE = re.compile(
     r"(\d[\d\s.,]{0,7})\s*(грн|гривен|гривень|uah|₴|\$|usd|дол)",
+    re.IGNORECASE,
+)
+# "бюджет 1000", "ціна до 800", "заплачу 500" — без валюты, считаем гривнами
+BUDGET_WORD_RE = re.compile(
+    r"(бюджет|цена|ціна|оплата|заплачу|плачу|вартість|стоимость)\D{0,6}(\d[\d\s]{1,6}\d|\d{2,})",
     re.IGNORECASE,
 )
 MENTION_RE = re.compile(r"@[A-Za-z0-9_]{4,}")
@@ -82,9 +87,23 @@ def detect(text: str) -> Detection:
     if not any(m in low for m in REQUEST_MARKERS):
         return Detection(False, "no request")
 
-    budget_match = BUDGET_RE.search(text)
-    budget = " ".join(budget_match.group(0).split()) if budget_match else None
-    return Detection(True, "ok", work_type, budget)
+    return Detection(True, "ok", work_type, find_budget(text))
+
+
+def find_budget(text: str) -> str | None:
+    match = BUDGET_RE.search(text)
+    if match:
+        return " ".join(match.group(0).split())
+    match = BUDGET_WORD_RE.search(text)
+    if match:
+        return " ".join(match.group(2).split()) + " UAH"
+    return None
+
+
+def hide_budget(text: str) -> str:
+    """Для бесплатного канала: бюджет видят только платные подписчики."""
+    text = BUDGET_RE.sub("💰🔒", text)
+    return BUDGET_WORD_RE.sub(lambda m: f"{m.group(1)} 💰🔒", text)
 
 
 def fingerprint(text: str) -> str:

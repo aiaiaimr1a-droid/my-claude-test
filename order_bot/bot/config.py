@@ -35,6 +35,8 @@ class Config:
     api_hash: str | None
     userbot_session: str
     userbot_chats: list[int | str]
+    userbot_public_chats: list[str]
+    userbot_poll_seconds: int
 
     @property
     def own_channels(self) -> set[int]:
@@ -62,4 +64,6 @@ def load_config() -> Config:
         api_hash=env.get("API_HASH") or None,
         userbot_session=env.get("USERBOT_SESSION", "userbot"),
         userbot_chats=[_chat_ref(x) for x in _list(env.get("USERBOT_CHATS", ""))],
+        userbot_public_chats=_list(env.get("USERBOT_PUBLIC_CHATS", "")),
+        userbot_poll_seconds=int(env.get("USERBOT_POLL_SECONDS", "180")),
     )

@@ -1,16 +1,16 @@
 import pytest
 
-from bot.detector import detect, fingerprint, mask_contacts
+from bot.detector import detect, fingerprint, hide_budget, mask_contacts
 
 
 @pytest.mark.parametrize(
     "text, work_type",
     [
-        ("Ребята, нужна курсовая по финансам до 15 ноября, бюджет 1500 грн", "Курсовая"),
-        ("Хто може написати реферат з історії України? Терміново", "Реферат"),
-        ("Потрібна допомога з дипломною, магістерська, економіка", "Дипломная"),
-        ("Кто сделает лабу по C++ ? заплачу", "Лабораторная"),
-        ("Шукаю когось, хто зробить звіт з практики", "Отчёт по практике"),
+        ("Ребята, нужна курсовая по финансам до 15 ноября, бюджет 1500 грн", "Coursework"),
+        ("Хто може написати реферат з історії України? Терміново", "Essay / report"),
+        ("Потрібна допомога з дипломною, магістерська, економіка", "Thesis"),
+        ("Кто сделает лабу по C++ ? заплачу", "Lab work"),
+        ("Шукаю когось, хто зробить звіт з практики", "Internship report"),
     ],
 )
 def test_orders_detected(text, work_type):
@@ -35,6 +35,24 @@ def test_non_orders_skipped(text):
 
 def test_budget_extracted():
     assert detect("Нужна курсовая, бюджет 1 500 грн").budget == "1 500 грн"
+
+
+@pytest.mark.parametrize(
+    "text, budget",
+    [
+        ("нужно сделать курсовую бюджет 1000", "1000 UAH"),
+        ("Потрібна курсова, ціна до 1 500", "1 500 UAH"),
+        ("нужна курсовая, заплачу 800$", "800$"),
+        ("нужна курсовая к пятнице", None),
+    ],
+)
+def test_budget_variants(text, budget):
+    assert detect(text).budget == budget
+
+
+def test_hide_budget():
+    hidden = hide_budget("нужна курсовая, бюджет 1000, или 1200 грн")
+    assert "1000" not in hidden and "1200" not in hidden
 
 
 def test_fingerprint_ignores_case_and_punctuation():

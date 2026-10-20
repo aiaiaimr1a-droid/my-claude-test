@@ -11,6 +11,9 @@ from bot.detector import detect, fingerprint, hide_budget, mask_contacts
         ("Потрібна допомога з дипломною, магістерська, економіка", "Thesis"),
         ("Кто сделает лабу по C++ ? заплачу", "Lab work"),
         ("Шукаю когось, хто зробить звіт з практики", "Internship report"),
+        ("Потрібна praca licencjacka з економіки, хто може?", "Thesis"),
+        ("Szukam kogoś, kto napisze pracę magisterską", "Thesis"),
+        ("Хто допоможе з Hausarbeit? Brauche Hilfe", "Coursework"),
     ],
 )
 def test_orders_detected(text, work_type):
@@ -24,6 +27,7 @@ def test_orders_detected(text, work_type):
     [
         "Пишу курсовые и дипломы, обращайтесь в лс, без предоплаты!",
         "Виконую реферати, якісно та недорого",
+        "Piszę prace licencjackie, zapraszam",
         "Сегодня пара по курсовой отменяется",  # нет просьбы
         "Кто идёт на пару?",  # нет типа работы
         "ок",

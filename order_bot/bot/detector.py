@@ -12,47 +12,87 @@ import hashlib
 import re
 from dataclasses import dataclass
 
-# Тип работы -> корни слов
+# Все слова ищутся по НАЧАЛУ слова: корень "есе" найдёт "есе" и "есей",
+# но не "донесения" и "пересек".
+
+# Тип работы -> корни слов. Порядок важен: берётся первый подошедший тип.
 WORK_TYPES: dict[str, tuple[str, ...]] = {
     "Thesis": (
         "диплом", "бакалаврськ", "бакалаврск", "магістерськ", "магистерск",
+        "выпускн", "випускн", "вкр",
         "licencjack", "magistersk", "dyplomow", "bakalářsk", "diplomov",
         "bachelorarbeit", "masterarbeit",
     ),
-    "Coursework": ("курсов", "hausarbeit", "seminární", "semestráln"),
-    "Essay / report": ("реферат", "referat"),
-    "Test paper": ("контрольн", "модульн"),
+    "Coursework": (
+        "курсов", "курсач", "курсак", "hausarbeit", "seminární", "semestráln",
+    ),
+    "Essay / report": ("реферат", "referat", "доклад", "доповід"),
+    "Test paper": ("контрольн", "модульн", "самостоятельн", "самостійн"),
     "Essay": ("эссе", "есе", "esej", "essay"),
     "Internship report": ("по практик", "з практик", "звіт", "отчет по", "отчёт по"),
-    "Lab work": ("лаборатор", "лабу", "лабы", "лаби"),
+    "Lab work": ("лаборатор", "лабу", "лабы", "лаби", "лаба", "лабк"),
     "Presentation": ("презентац", "prezentac", "präsentation"),
+    "Calculation / drawing": (
+        "ргр", "расчетно", "расчётно", "розрахунков", "чертеж", "чертёж", "креслен",
+    ),
     "Problems": ("задач", "розв'яз", "решить", "вирішити"),
     "Test / exam": ("тест", "экзамен", "екзамен", "залік", "зачет", "зачёт"),
     "Article / abstract": ("стать", "тези", "тезис"),
 }
 
+# Слишком общие слова: "задача", "тест", "статья" встречаются везде.
+# Для них нужна явная просьба решить/сделать или упоминание оплаты.
+WEAK_TYPES = {"Problems", "Test / exam", "Article / abstract"}
+WEAK_CONFIRM = (
+    "кто решит", "кто может решить", "помогите решить", "решить за", "хто розв'яже",
+    "хто вирішить", "допоможіть розв'язати", "допоможіть вирішити", "кто пройдет",
+    "кто пройдёт", "хто пройде", "кто сдаст", "хто здасть", "кто напишет", "хто напише",
+    "заплачу", "плачу", "оплачу", "оплата", "за сколько", "за скільки",
+    "сколько стоит", "скільки кошт", "цена", "ціна", "бюджет",
+)
+
 # Признаки того, что человек ищет исполнителя
 REQUEST_MARKERS = (
     "нужн", "нужен", "надо", "треба", "потрібн", "помогите", "допоможіть", "допоможе",
-    "кто может", "кто напишет", "кто сделает", "кто возьм", "хто може", "хто напише",
-    "хто зробить", "хто візьм", "ищу", "шукаю", "замов", "сколько стоит", "скільки кошт",
-    "кто шарит", "хто шарить", "?",
+    "кто может", "кто сможет", "кто напишет", "кто сделает", "кто возьм", "кто поможет",
+    "хто може", "хто зможе", "хто напише", "хто зробить", "хто візьм",
+    "ищу", "шукаю", "замов", "сколько стоит", "скільки кошт", "за сколько", "за скільки",
+    "кто шарит", "хто шарить", "можете помочь", "можете допомогти",
+    "кто решит", "хто розв'яже", "хто вирішить", "кто пройдет", "кто пройдёт",
+    "хто пройде", "кто сдаст", "хто здасть",
     # PL / CZ / DE
     "potrzebuj", "szukam", "kto napisze", "kto zrobi", "ile kosztuje", "hledám",
     "potřebuj", "kdo napíše", "suche", "brauche", "wer kann",
 )
 
-# Признаки рекламы от авторов / сервисов — такие сообщения отбрасываем
+# Признаки рекламы от авторов, сервисов и репетиторов — такие сообщения отбрасываем
 AD_MARKERS = (
     "пишу ", "напишу", "выполню", "выполняю", "виконаю", "виконую", "обращайтесь",
     "звертайтесь", "пишите в лс", "пишіть в лс", "пишіть в особист", "без предоплат",
     "без передоплат", "гарантия", "гарантія", "наш сервис", "наш сервіс", "скидк",
-    "знижк", "недорого", "качественно", "якісно", "опыт работы", "досвід роботи",
-    "принимаю заказы", "приймаю замовлення",
+    "знижк", "опыт работы", "досвід роботи", "принимаю заказы", "приймаю замовлення",
+    "выполняем", "виконуємо", "пишем ", "пишемо", "помогу", "допоможу", "сделаю", "зроблю",
+    "предлагаю", "пропоную", "записывайтесь", "записуйтесь",
+    # репетиторы
+    "репетитор", "провожу занят", "проводжу занят", "занятия", "заняття", "уроки",
+    "готовлю к", "готую до", "подготовка к", "підготовка до", "пробное занят",
+    "пробне занят", "индивидуальн", "індивідуальн", "мои ученики", "мої учні",
+    "преподаю", "викладаю",
     # PL / CZ / DE
     "piszę", "napiszę", "oferuję", "zapraszam", "píšu", "napíšu", "nabízím",
-    "schreibe", "biete",
+    "schreibe", "biete", "korepetycj", "doučování", "nachhilfe",
 )
+
+
+def _starts_word(words: tuple[str, ...]) -> re.Pattern:
+    alternatives = "|".join(re.escape(w) for w in sorted(words, key=len, reverse=True))
+    return re.compile(rf"(?<!\w)(?:{alternatives})", re.IGNORECASE)
+
+
+TYPE_PATTERNS = {name: _starts_word(roots) for name, roots in WORK_TYPES.items()}
+WEAK_CONFIRM_RE = _starts_word(WEAK_CONFIRM)
+REQUEST_RE = _starts_word(REQUEST_MARKERS)
+AD_RE = _starts_word(AD_MARKERS)
 
 MIN_LEN = 15
 MAX_LEN = 1200  # длинные полотна почти всегда реклама
@@ -80,25 +120,24 @@ class Detection:
 
 
 def detect(text: str) -> Detection:
-    low = text.lower()
-
     if not MIN_LEN <= len(text) <= MAX_LEN:
         return Detection(False, "length")
-    if any(m in low for m in AD_MARKERS):
+    if AD_RE.search(text):
         return Detection(False, "ad")
     if len(URL_RE.findall(text)) + len(MENTION_RE.findall(text)) > 2:
         return Detection(False, "too many links")
 
-    work_type = next(
-        (name for name, roots in WORK_TYPES.items() if any(r in low for r in roots)),
-        None,
-    )
+    work_type = next((name for name, p in TYPE_PATTERNS.items() if p.search(text)), None)
     if work_type is None:
         return Detection(False, "no work type")
-    if not any(m in low for m in REQUEST_MARKERS):
+    if not REQUEST_RE.search(text):
         return Detection(False, "no request")
 
-    return Detection(True, "ok", work_type, find_budget(text))
+    budget = find_budget(text)
+    if work_type in WEAK_TYPES and not (budget or WEAK_CONFIRM_RE.search(text)):
+        return Detection(False, "weak type without confirmation")
+
+    return Detection(True, "ok", work_type, budget)
 
 
 def find_budget(text: str) -> str | None:

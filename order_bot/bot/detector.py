@@ -47,10 +47,10 @@ MIN_LEN = 15
 MAX_LEN = 1200  # длинные полотна почти всегда реклама
 
 BUDGET_RE = re.compile(
-    r"(\d[\d\s.,]{0,7})\s*(грн|гривен|гривень|uah|₴|\$|usd|дол)",
+    r"(\d[\d\s.,]{0,7})\s*(грн|гривен|гривень|uah|₴|руб|₽|р\.?(?!\w)|тг|тенге|₸|byn|zł|zl|злот|€|eur|\$|usd|дол)",
     re.IGNORECASE,
 )
-# "бюджет 1000", "ціна до 800", "заплачу 500" — без валюты, считаем гривнами
+# "бюджет 1000", "ціна до 800", "заплачу 500" — валюта не указана
 BUDGET_WORD_RE = re.compile(
     r"(бюджет|цена|ціна|оплата|заплачу|плачу|вартість|стоимость)\D{0,6}(\d[\d\s]{1,6}\d|\d{2,})",
     re.IGNORECASE,
@@ -96,7 +96,7 @@ def find_budget(text: str) -> str | None:
         return " ".join(match.group(0).split())
     match = BUDGET_WORD_RE.search(text)
     if match:
-        return " ".join(match.group(2).split()) + " UAH"
+        return " ".join(match.group(2).split())
     return None
 
 

@@ -65,6 +65,9 @@ REQUEST_MARKERS = (
     "кто шарит", "хто шарить", "можете помочь", "можете допомогти",
     "кто решит", "хто розв'яже", "хто вирішить", "кто пройдет", "кто пройдёт",
     "хто пройде", "кто сдаст", "хто здасть",
+    "хтось", "кто-нибудь", "кто нибудь", "кто-то", "есть кто", "є хто", "є хтось",
+    "підкажіть хто", "подскажите кто", "посоветуйте", "порадьте", "ищу автора",
+    "шукаю автора", "терміново", "срочно", "горит", "горить", "дедлайн",
     # PL / CZ / DE
     "potrzebuj", "szukam", "kto napisze", "kto zrobi", "ile kosztuje", "hledám",
     "potřebuj", "kdo napíše", "suche", "brauche", "wer kann",
@@ -137,23 +140,32 @@ class Detection:
     budget: str | None = None
 
 
+# "курсові від 500 грн" — так пишут авторы, а не студенты
+PRICE_FROM_RE = re.compile(r"(?<!\w)(?:від|от|from|od)\s*\d", re.IGNORECASE)
+
+
+def find_work_type(text: str) -> str | None:
+    return next((name for name, p in TYPE_PATTERNS.items() if p.search(text)), None)
+
+
 def detect(text: str) -> Detection:
     if not MIN_LEN <= len(text) <= MAX_LEN:
         return Detection(False, "length")
-    if AD_RE.search(text):
+    if AD_RE.search(text) or PRICE_FROM_RE.search(text):
         return Detection(False, "ad")
     if OFF_TOPIC_RE.search(text):
         return Detection(False, "off topic")
     if len(URL_RE.findall(text)) + len(MENTION_RE.findall(text)) > 2:
         return Detection(False, "too many links")
 
-    work_type = next((name for name, p in TYPE_PATTERNS.items() if p.search(text)), None)
+    work_type = find_work_type(text)
     if work_type is None:
         return Detection(False, "no work type")
-    if not REQUEST_RE.search(text):
+    budget = find_budget(text)
+    # цена без "от/від" тоже признак заказа: "курсова з права, плачу 1200"
+    if not (REQUEST_RE.search(text) or (budget and work_type not in WEAK_TYPES)):
         return Detection(False, "no request")
 
-    budget = find_budget(text)
     if work_type in WEAK_TYPES and not (budget or WEAK_CONFIRM_RE.search(text)):
         return Detection(False, "weak type without confirmation")
 

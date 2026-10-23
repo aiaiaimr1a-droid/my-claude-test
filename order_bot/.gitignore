@@ -8,3 +8,4 @@ __pycache__/
 discovered.csv
 login_qr.svg
 discover_cache.json
+near_misses.txt

@@ -2,6 +2,8 @@ import asyncio
 import logging
 import time
 from collections import Counter
+from datetime import datetime
+from pathlib import Path
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
@@ -9,10 +11,15 @@ from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from . import formatter
 from .config import Config
 from .db import Database
-from .detector import detect, fingerprint
+from .detector import detect, find_work_type, fingerprint
 from .models import RawMessage
 
 log = logging.getLogger(__name__)
+
+# Сюда пишутся сообщения, где есть "курсова/реферат", но фильтр их отбросил.
+# Их полезно просматривать: так видно, какие заказы фильтр пропускает.
+NEAR_MISSES_FILE = Path("near_misses.txt")
+NEAR_MISS_REASONS = {"no request", "ad", "off topic", "weak type without confirmation"}
 
 
 class Publisher:
@@ -35,6 +42,8 @@ class Publisher:
         if not result.is_order:
             self.stats[result.reason] += 1
             log.debug("skip %s/%s: %s", msg.chat_title, msg.message_id, result.reason)
+            if result.reason in NEAR_MISS_REASONS and find_work_type(msg.text):
+                _save_near_miss(msg, result.reason)
             return
 
         fp = fingerprint(msg.text)
@@ -121,3 +130,13 @@ class Publisher:
                 log.error("send to %s failed: %s", chat_id, e)
                 return None
         return None
+
+
+def _save_near_miss(msg: RawMessage, reason: str) -> None:
+    text = " ".join(msg.text.split())[:400]
+    line = f"{datetime.now():%Y-%m-%d %H:%M} | {reason} | {msg.chat_title} | {text}\n"
+    try:
+        with NEAR_MISSES_FILE.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError as e:
+        log.debug("cannot write near miss: %s", e)

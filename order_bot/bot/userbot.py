@@ -86,6 +86,7 @@ async def _poll_public_chats(client: TelegramClient, cfg: Config, publisher: Pub
     skip_until: dict[str, float] = {}  # группы, которые временно не читаем
     resolve_paused_until = 0.0  # пока не истечёт — новых имён не ищем
     while True:
+        read = 0
         for ref in cfg.userbot_public_chats:
             now = time.time()
             if skip_until.get(ref, 0) > now:
@@ -132,7 +133,15 @@ async def _poll_public_chats(client: TelegramClient, cfg: Config, publisher: Pub
                 await _publish(publisher, message, message.chat or await message.get_chat())
             if messages:
                 last_ids[ref] = max(m.id for m in messages)
+            read += 1
             await asyncio.sleep(2)
+        waiting = len(cfg.userbot_public_chats) - read
+        log.info(
+            "public chats checked: %d of %d%s",
+            read,
+            len(cfg.userbot_public_chats),
+            f" ({waiting} waiting: limits or errors)" if waiting else "",
+        )
         await asyncio.sleep(cfg.userbot_poll_seconds)
 
 

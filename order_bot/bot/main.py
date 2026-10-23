@@ -15,6 +15,8 @@ async def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    # служебные строки вроде "Got difference for channel" только мешают читать окно
+    logging.getLogger("telethon").setLevel(logging.WARNING)
     cfg = load_config()
     db = Database(cfg.db_path)
     bot = Bot(
@@ -28,7 +30,10 @@ async def main() -> None:
     dp = Dispatcher(db=db, cfg=cfg, publisher=publisher)
     dp.include_router(router)
 
-    tasks = [dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())]
+    tasks = [
+        dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types()),
+        publisher.report_loop(),
+    ]
     if cfg.free_channel_id:
         tasks.append(publisher.free_channel_loop())
     if cfg.userbot_enabled:

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import time
+from collections import Counter
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
@@ -24,18 +25,22 @@ class Publisher:
         self.cfg = cfg
         self.bot_username = bot_username
         self._lock = asyncio.Lock()  # бот и юзербот могут прислать дубль одновременно
+        self.stats: Counter[str] = Counter()  # для отчёта раз в 10 минут
 
     async def handle(self, msg: RawMessage) -> None:
         if msg.chat_id in self.cfg.own_channels:
             return
+        self.stats["messages"] += 1
         result = detect(msg.text)
         if not result.is_order:
+            self.stats[result.reason] += 1
             log.debug("skip %s/%s: %s", msg.chat_title, msg.message_id, result.reason)
             return
 
         fp = fingerprint(msg.text)
         async with self._lock:
             if self.db.is_duplicate(fp, self.cfg.dedup_hours):
+                self.stats["duplicate"] += 1
                 log.info("duplicate from %s", msg.chat_title)
                 return
             free_due = (
@@ -53,7 +58,27 @@ class Publisher:
         )
         if sent:
             self.db.set_paid_message(order_id, sent.message_id)
+            self.stats["published"] += 1
             log.info("order #%s from %s published", order_id, msg.chat_title)
+
+    async def report_loop(self, every_minutes: int = 10) -> None:
+        """Раз в 10 минут пишет в окно, сколько сообщений прочитано и что с ними стало."""
+        while True:
+            await asyncio.sleep(every_minutes * 60)
+            s, self.stats = self.stats, Counter()
+            skipped = ", ".join(
+                f"{reason}: {n}"
+                for reason, n in s.most_common()
+                if reason not in ("messages", "published", "duplicate")
+            )
+            log.info(
+                "last %d min: messages %d, published %d, duplicates %d, skipped — %s",
+                every_minutes,
+                s["messages"],
+                s["published"],
+                s["duplicate"],
+                skipped or "none",
+            )
 
     async def refresh_buttons(self, order_id: int) -> None:
         order = self.db.get_order(order_id)

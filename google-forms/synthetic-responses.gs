@@ -16,24 +16,32 @@
  *  - соблюдаются переходы между разделами (ветвление по ответу и «после раздела перейти к…»).
  */
 
+// ID формы из адреса редактирования: docs.google.com/forms/d/<ID>/edit
+// Чтобы отправлять ответы в копию формы, подставьте сюда ID копии.
+const FORM_ID = '1fLyOrhIuQ9ai99PCie3h27jEXb81H4XzeCVRY0nm0A0';
+
+function getForm() {
+  return FormApp.getActiveForm() || FormApp.openById(FORM_ID);
+}
+
 // ---------- точки входа ----------
 
 function previewOne() {
   const p = makePersona();
-  const { log } = buildResponse(FormApp.getActiveForm(), p);
+  const { log } = buildResponse(getForm(), p);
   Logger.log('Персона: ' + JSON.stringify(p) + '\n' + log.join('\n'));
 }
 
 function submitOne() {
   const p = makePersona();
-  const { resp, log } = buildResponse(FormApp.getActiveForm(), p);
+  const { resp, log } = buildResponse(getForm(), p);
   resp.submit();
   Logger.log('ОТПРАВЛЕНО. Персона: ' + JSON.stringify(p) + '\n' + log.join('\n'));
 }
 
 function dumpStructure() {
   const T = FormApp.ItemType;
-  const out = FormApp.getActiveForm().getItems().map(it => {
+  const out = getForm().getItems().map(it => {
     const t = it.getType();
     const o = { id: it.getId(), type: String(t), title: it.getTitle() };
     try {

@@ -92,7 +92,11 @@ function answerItem(item, p) {
       const it = type === T.LIST ? item.asListItem() : item.asMultipleChoiceItem();
       if (!it.isRequired() && Math.random() < p.skipRate / 3) return null;
       const choices = it.getChoices();
-      const c = choices[pickIndex(choiceWeights(id, choices.length))];
+      const values = choices.map(c => c.getValue());
+      const idx = looksOrdinal(values)
+        ? ordinal(p, 0, choices.length - 1, id)
+        : pickIndex(choiceWeights(id, choices.length));
+      const c = choices[idx];
       return { response: it.createResponse(c.getValue()), shown: c.getValue(), nav: choiceNav(c) };
     }
     case T.CHECKBOX: {
@@ -168,6 +172,13 @@ function answerItem(item, p) {
     default:
       return null; // заголовки, картинки, видео и т. п.
   }
+}
+
+// Варианты похожи на шкалу (Лайкерт, частота, баллы)? Тогда отвечаем через скрытую черту, а не случайно.
+const ORDINAL_RE = /^\s*[-+]?\d|згод|соглас|завжди|ніколи|часто|рідко|іноді|інколи|всегда|никогда|редко|иногда|скоріше|скорее|повністю|полностью|зовсім|совсем|майже|почти|дуже|очень|так\b|ні\b|да\b|нет\b|не знаю|важко сказати/i;
+
+function looksOrdinal(values) {
+  return values.length >= 2 && values.every(v => ORDINAL_RE.test(v));
 }
 
 function choiceNav(choice) {

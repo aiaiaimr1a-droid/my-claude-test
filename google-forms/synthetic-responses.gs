@@ -16,6 +16,39 @@
  *  - соблюдаются переходы между разделами (ветвление по ответу и «после раздела перейти к…»).
  */
 
+// ---------- точки входа ----------
+
+function previewOne() {
+  const p = makePersona();
+  const { log } = buildResponse(FormApp.getActiveForm(), p);
+  Logger.log('Персона: ' + JSON.stringify(p) + '\n' + log.join('\n'));
+}
+
+function submitOne() {
+  const p = makePersona();
+  const { resp, log } = buildResponse(FormApp.getActiveForm(), p);
+  resp.submit();
+  Logger.log('ОТПРАВЛЕНО. Персона: ' + JSON.stringify(p) + '\n' + log.join('\n'));
+}
+
+function dumpStructure() {
+  const T = FormApp.ItemType;
+  const out = FormApp.getActiveForm().getItems().map(it => {
+    const t = it.getType();
+    const o = { id: it.getId(), type: String(t), title: it.getTitle() };
+    try {
+      if (t === T.MULTIPLE_CHOICE) o.choices = it.asMultipleChoiceItem().getChoices().map(c => c.getValue());
+      if (t === T.CHECKBOX) o.choices = it.asCheckboxItem().getChoices().map(c => c.getValue());
+      if (t === T.LIST) o.choices = it.asListItem().getChoices().map(c => c.getValue());
+      if (t === T.SCALE) { const s = it.asScaleItem(); o.min = s.getLowerBound(); o.max = s.getUpperBound(); }
+      if (t === T.GRID) { const g = it.asGridItem(); o.rows = g.getRows(); o.cols = g.getColumns(); }
+      if (t === T.CHECKBOX_GRID) { const g = it.asCheckboxGridItem(); o.rows = g.getRows(); o.cols = g.getColumns(); }
+    } catch (e) {}
+    return o;
+  });
+  Logger.log(JSON.stringify(out));
+}
+
 // ---------- случайность ----------
 
 function randn() {
@@ -245,37 +278,4 @@ function buildResponse(form, p) {
     log.push('  ' + item.getTitle() + ' → ' + a.shown);
   }
   return { resp: resp, log: log };
-}
-
-// ---------- точки входа ----------
-
-function previewOne() {
-  const p = makePersona();
-  const { log } = buildResponse(FormApp.getActiveForm(), p);
-  Logger.log('Персона: ' + JSON.stringify(p) + '\n' + log.join('\n'));
-}
-
-function submitOne() {
-  const p = makePersona();
-  const { resp, log } = buildResponse(FormApp.getActiveForm(), p);
-  resp.submit();
-  Logger.log('ОТПРАВЛЕНО. Персона: ' + JSON.stringify(p) + '\n' + log.join('\n'));
-}
-
-function dumpStructure() {
-  const T = FormApp.ItemType;
-  const out = FormApp.getActiveForm().getItems().map(it => {
-    const t = it.getType();
-    const o = { id: it.getId(), type: String(t), title: it.getTitle() };
-    try {
-      if (t === T.MULTIPLE_CHOICE) o.choices = it.asMultipleChoiceItem().getChoices().map(c => c.getValue());
-      if (t === T.CHECKBOX) o.choices = it.asCheckboxItem().getChoices().map(c => c.getValue());
-      if (t === T.LIST) o.choices = it.asListItem().getChoices().map(c => c.getValue());
-      if (t === T.SCALE) { const s = it.asScaleItem(); o.min = s.getLowerBound(); o.max = s.getUpperBound(); }
-      if (t === T.GRID) { const g = it.asGridItem(); o.rows = g.getRows(); o.cols = g.getColumns(); }
-      if (t === T.CHECKBOX_GRID) { const g = it.asCheckboxGridItem(); o.rows = g.getRows(); o.cols = g.getColumns(); }
-    } catch (e) {}
-    return o;
-  });
-  Logger.log(JSON.stringify(out));
 }
